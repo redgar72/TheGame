@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://cyq20njyp1786"
+path="res://.godot/imported/ChiliPlant_Stage02.obj-a2913fdc617a7d71306e8460cdc1399f.mesh"
+
+[deps]
+
+files=["res://.godot/imported/ChiliPlant_Stage02.obj-a2913fdc617a7d71306e8460cdc1399f.mesh"]
+
+source_file="res://assets/ChiliPlant_Stage02.obj"
+dest_files=["res://.godot/imported/ChiliPlant_Stage02.obj-a2913fdc617a7d71306e8460cdc1399f.mesh", "res://.godot/imported/ChiliPlant_Stage02.obj-a2913fdc617a7d71306e8460cdc1399f.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

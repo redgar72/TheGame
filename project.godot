@@ -15,6 +15,10 @@ run/main_scene="uid://f56lkpwrhbig"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
+[filesystem]
+
+import/blender/enabled=false
+
 [input]
 
 left_click={

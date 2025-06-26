@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://djt3htg5vdthq"
+path="res://.godot/imported/Tree_Green_02.obj-43f4f948a1cffe9d66dd54e55be3015d.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Tree_Green_02.obj-43f4f948a1cffe9d66dd54e55be3015d.mesh"]
+
+source_file="res://assets/Tree_Green_02.obj"
+dest_files=["res://.godot/imported/Tree_Green_02.obj-43f4f948a1cffe9d66dd54e55be3015d.mesh", "res://.godot/imported/Tree_Green_02.obj-43f4f948a1cffe9d66dd54e55be3015d.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

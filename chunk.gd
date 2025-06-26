@@ -9,3 +9,6 @@ func render_chunk():
 
 func render_object(object):
 	pass
+
+func generate_chunk(size: int):
+	

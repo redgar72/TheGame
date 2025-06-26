@@ -5,9 +5,12 @@ const WORLD_SIZE = 10  # Size of the world in tiles
 const TILE_SIZE = 1.0  # Size of each tile in world units
 
 var hovered: Vector2i = Vector2i(-1, -1)  # Track hovered tile position
+var hovered_game_object: GameObject = null  # Track hovered GameObject
 var player: Player
 var camera: Camera3D
 var tile_outlines = {}  # Store references to outline meshes for updating
+
+var outline_shader = preload("res://new_out.gdshader")
 
 class TileType:
 	var name: String
@@ -31,8 +34,6 @@ enum TYLE {
 	WATER,
 }
 
-
-
 # Simple struct to represent a tile
 class WorldTile:
 	var type: int
@@ -47,7 +48,10 @@ var world_tiles = []
 
 func _ready():
 	# Create and setup camera
-	setup_camera()
+	camera = PlayerCamera.setup_camera(self)
+	
+	# Create GameObjects
+	create_game_objects()
 	
 	# Create the player
 	create_player()
@@ -86,32 +90,66 @@ func check_mouse_hover():
 	var result = space_state.intersect_ray(query)
 	
 	var new_hovered = Vector2i(-1, -1)
+	var new_hovered_game_object: GameObject = null
 	
 	if result:
-		# Get the hit position
+		# Get the hit position and collider
 		var hit_pos = result.position
+		var collider = result.collider
 		
-		# Convert world position to tile position
-		# Add 0.5 to offset the collision box center, then floor to get tile index
-		var tile_pos = Vector2i(floor(hit_pos.x + 0.5), floor(hit_pos.z + 0.5))
+		# Check if we hit a GameObject
+		if collider is StaticBody3D:
+			var parent = collider.get_parent()
+			if parent is GameObject:
+				new_hovered_game_object = parent as GameObject
+			else:
+				# Check if the StaticBody3D itself is a GameObject (though this shouldn't happen)
+				if collider is GameObject:
+					new_hovered_game_object = collider as GameObject
 		
-		# Check if tile position is within bounds
-		if tile_pos.x >= 0 and tile_pos.x < WORLD_SIZE and tile_pos.y >= 0 and tile_pos.y < WORLD_SIZE:
-			new_hovered = tile_pos
+		# If we didn't hit a GameObject, check for tiles
+		if not new_hovered_game_object:
+			# Convert world position to tile position
+			# Add 0.5 to offset the collision box center, then floor to get tile index
+			var tile_pos = Vector2i(floor(hit_pos.x + 0.5), floor(hit_pos.z + 0.5))
+			
+			# Check if tile position is within bounds
+			if tile_pos.x >= 0 and tile_pos.x < WORLD_SIZE and tile_pos.y >= 0 and tile_pos.y < WORLD_SIZE:
+				new_hovered = tile_pos
 	
 	# Update hovered tile and visual feedback
 	if new_hovered != hovered:
 		# Remove highlight from previous tile
 		if hovered != Vector2i(-1, -1) and tile_outlines.has(hovered):
 			update_tile_outline(hovered, Color.BLACK)
-			print("Mouse exited tile: ", hovered)
+			# print("Mouse exited tile: ", hovered)
 		
 		# Add highlight to new tile
 		if new_hovered != Vector2i(-1, -1):
 			update_tile_outline(new_hovered, Color.GOLD)
-			print("Mouse entered tile: ", new_hovered)
+			# print("Mouse entered tile: ", new_hovered)
 		
 		hovered = new_hovered
+	
+	# Update hovered GameObject
+	if new_hovered_game_object != hovered_game_object:
+		# Remove highlight from previous GameObject
+		if hovered_game_object:
+			hovered_game_object.is_hovered = false
+			if hovered_game_object.outline_2d:
+				hovered_game_object.outline_2d.visible = false
+				hovered_game_object.outline_2d.queue_redraw()
+			print("Mouse exited GameObject: ", hovered_game_object.name)
+		
+		# Add highlight to new GameObject
+		if new_hovered_game_object:
+			new_hovered_game_object.is_hovered = true
+			if new_hovered_game_object.outline_2d:
+				new_hovered_game_object.outline_2d.visible = true
+				new_hovered_game_object.outline_2d.queue_redraw()
+			print("Mouse entered GameObject: ", new_hovered_game_object.name)
+		
+		hovered_game_object = new_hovered_game_object
 
 func update_tile_outline(tile_pos: Vector2i, color: Color):
 	if tile_outlines.has(tile_pos):
@@ -338,19 +376,60 @@ func is_tile_walkable(tile_pos: Vector2i) -> bool:
 	# Define which tile types are walkable
 	return TILE_TYPES[tile_type].walkable
 
-func setup_camera():
-	# Create camera
-	camera = Camera3D.new()
-	camera.position = Vector3(8, 6, 8)  # Position camera at an angle above and to the side
-	camera.look_at_from_position(Vector3(8, 6, 8), Vector3(5, 0, 5), Vector3.UP)  # Look at center of world
-	add_child(camera)
+func create_game_objects():
+	# Create a tree
+	# var tree = GameObject.create_tree(self)
 	
-	# Make this camera the current camera
-	camera.make_current()
+	# Create additional objects for testing
+	create_test_objects()
+
+func create_test_objects():
+	# Create a few more objects to test hover functionality
+	var test_objects = [
+		{"name": "Gray Tree", "tile": Vector2i(5, 5), "mesh": preload("res://assets/GreyTree.obj")},
+		{"name": "Palm Tree", "tile": Vector2i(7, 3), "mesh": preload("res://assets/PalmTree.obj")},
+		{"name": "Trunk", "tile": Vector2i(2, 7), "mesh": preload("res://assets/Trunk_02.obj")}
+	]
 	
-	# Create directional light
-	var light = DirectionalLight3D.new()
-	light.position = Vector3(0, 10, 0)
-	light.rotation = Vector3(-PI/4, 0, 0)  # Angle down at 45 degrees
-	light.light_energy = 1.5
-	add_child(light)
+	for obj_data in test_objects:
+		var obj = GameObject.new(
+			obj_data.name,
+			{
+				"Interact": func(): print("Interacting with ", obj_data.name),
+				"Examine": func(): print("Examining ", obj_data.name)
+			},
+			obj_data.tile
+		)
+		
+		obj.mesh = obj_data.mesh
+		var material = StandardMaterial3D.new()
+		
+		var shader_material = ShaderMaterial.new()
+		shader_material.shader = outline_shader
+		shader_material.set_shader_parameter("Outline Color", Color.BLACK)
+		shader_material.set_shader_parameter("Outline Width", 5.0)
+		
+		material.next_pass = shader_material
+		obj.set_surface_override_material(0,material)
+		var tile_position = Vector3(obj.tile.x * 1.0, 0.5, obj.tile.y * 1.0)
+		obj.position = tile_position
+		
+		add_child(obj)
+		print("Created ", obj_data.name, " at tile: ", obj.tile, " world position: ", tile_position)
+
+#func setup_camera():
+	## Create camera
+	#camera = Camera3D.new()
+	#camera.position = Vector3(8, 6, 8)  # Position camera at an angle above and to the side
+	#camera.look_at_from_position(Vector3(8, 6, 8), Vector3(5, 0, 5), Vector3.UP)  # Look at center of world
+	#add_child(camera)
+	#
+	## Make this camera the current camera
+	#camera.make_current()
+	#
+	## Create directional light
+	#var light = DirectionalLight3D.new()
+	#light.position = Vector3(0, 10, 0)
+	#light.rotation = Vector3(-PI/4, 0, 0)  # Angle down at 45 degrees
+	#light.light_energy = 1.5
+	#add_child(light)
