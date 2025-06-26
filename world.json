@@ -1,0 +1,12 @@
+{
+    "tiles": [
+        {
+            "type": "grass",
+            "position": [0, 0]
+        },
+        {
+            "type": "grass",
+            "position": [0, 1]
+        }
+    ]
+}
