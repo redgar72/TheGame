@@ -1,14 +1,13 @@
 extends Node3D
 class_name World
 
-const WORLD_SIZE = 10  # Size of the world in tiles
 const TILE_SIZE = 1.0  # Size of each tile in world units
 
 var hovered: Vector2i = Vector2i(-1, -1)  # Track hovered tile position
 var hovered_game_object: GameObject = null  # Track hovered GameObject
 var player: Player
 var camera: Camera3D
-var tile_outlines = {}  # Store references to outline meshes for updating
+var chunk_manager: ChunkManager
 
 var outline_shader = preload("res://new_out.gdshader")
 
@@ -50,18 +49,19 @@ func _ready():
 	# Create and setup camera
 	camera = PlayerCamera.setup_camera(self)
 	
-	# Create GameObjects
-	create_game_objects()
-	
 	# Create the player
 	create_player()
 	
-	# Initialize the world with empty tiles
-	world_tiles = _initialize_tiles()
+	# Initialize chunk manager
+	chunk_manager = ChunkManager.new(self, player)
+	add_child(chunk_manager)
 	
-	# Generate and render the world
-	# generate_world()
-	render_world(world_tiles)
+	# Connect tile click signal
+	chunk_manager.tile_clicked.connect(_on_tile_clicked)
+	
+	# Load initial chunks around player
+	var player_chunk_pos = chunk_manager.get_chunk_position_from_world(Vector2i(player.world_position))
+	chunk_manager.update_chunks_around_player(player_chunk_pos)
 
 func _process(delta):
 	# Check for mouse hover every frame
@@ -113,21 +113,23 @@ func check_mouse_hover():
 			# Add 0.5 to offset the collision box center, then floor to get tile index
 			var tile_pos = Vector2i(floor(hit_pos.x + 0.5), floor(hit_pos.z + 0.5))
 			
-			# Check if tile position is within bounds
-			if tile_pos.x >= 0 and tile_pos.x < WORLD_SIZE and tile_pos.y >= 0 and tile_pos.y < WORLD_SIZE:
+			# Check if tile position is within loaded chunks
+			if chunk_manager and chunk_manager.get_chunk_at_position(tile_pos):
 				new_hovered = tile_pos
 	
 	# Update hovered tile and visual feedback
 	if new_hovered != hovered:
 		# Remove highlight from previous tile
-		if hovered != Vector2i(-1, -1) and tile_outlines.has(hovered):
-			update_tile_outline(hovered, Color.BLACK)
-			# print("Mouse exited tile: ", hovered)
+		if hovered != Vector2i(-1, -1):
+			var chunk = chunk_manager.get_chunk_at_position(hovered)
+			if chunk:
+				chunk.update_tile_outline(hovered, Color.BLACK)
 		
 		# Add highlight to new tile
 		if new_hovered != Vector2i(-1, -1):
-			update_tile_outline(new_hovered, Color.GOLD)
-			# print("Mouse entered tile: ", new_hovered)
+			var chunk = chunk_manager.get_chunk_at_position(new_hovered)
+			if chunk:
+				chunk.update_tile_outline(new_hovered, Color.GOLD)
 		
 		hovered = new_hovered
 	
@@ -136,7 +138,7 @@ func check_mouse_hover():
 		# Remove highlight from previous GameObject
 		if hovered_game_object:
 			hovered_game_object.is_hovered = false
-			if hovered_game_object.outline_2d:
+			if hovered_game_object.outline_2d and is_instance_valid(hovered_game_object.outline_2d):
 				hovered_game_object.outline_2d.visible = false
 				hovered_game_object.outline_2d.queue_redraw()
 			print("Mouse exited GameObject: ", hovered_game_object.name)
@@ -144,106 +146,32 @@ func check_mouse_hover():
 		# Add highlight to new GameObject
 		if new_hovered_game_object:
 			new_hovered_game_object.is_hovered = true
-			if new_hovered_game_object.outline_2d:
+			if new_hovered_game_object.outline_2d and is_instance_valid(new_hovered_game_object.outline_2d):
 				new_hovered_game_object.outline_2d.visible = true
 				new_hovered_game_object.outline_2d.queue_redraw()
 			print("Mouse entered GameObject: ", new_hovered_game_object.name)
 		
 		hovered_game_object = new_hovered_game_object
 
-func update_tile_outline(tile_pos: Vector2i, color: Color):
-	if tile_outlines.has(tile_pos):
-		var outline = tile_outlines[tile_pos]
-		var material = outline.material_override as StandardMaterial3D
-		if material:
-			material.albedo_color = color
-
-func _initialize_tiles():
-	var tiles =  []
-	for i in range(WORLD_SIZE):
-		var row = []
-		for j in range(WORLD_SIZE):
-			row.append(WorldTile.new())  # Initialize with grass tile type
-		tiles.append(row)
-	return tiles
-
-func render_world(tiles: Array = []):
-	if tiles == null:
-		tiles = world_tiles
+func _on_tile_clicked(tile_position: Vector2i):
+	"""Handle tile click events from chunk manager"""
+	print("Clicked on tile at position: ", tile_position)
 	
-	print("Starting to render world...")
-	# Render all tiles in the world
-	for i in range(WORLD_SIZE):
-		for j in range(WORLD_SIZE):
-			var tile = tiles[i][j]
-			render_tile(Vector2i(i, j), tile.type)
+	# Get player's current tile position
+	var player_tile_pos = Vector2i(floor(player.character_body.global_position.x), floor(player.character_body.global_position.z))
 	
-	print("Finished rendering world. Total tiles created: ", get_child_count())
-
-func render_tile(tile_position: Vector2i, tile_type: int = 0):
-	if tile_position.x < 0 or tile_position.x >= WORLD_SIZE or tile_position.y < 0 or tile_position.y >= WORLD_SIZE:
-		return  # Out of bounds
+	# Find the closest walkable tile
+	var target_tile = find_closest_walkable_tile(tile_position, player_tile_pos)
 	
-	# Create a simple box mesh
-	var mesh = BoxMesh.new()
-	mesh.size = Vector3(1.0, 0.5, 1.0)  # Width: 1, Height: 0.5, Depth: 1
-	
-	# Create mesh instance
-	var mesh_instance = MeshInstance3D.new()
-	mesh_instance.mesh = mesh
-	
-	# Position the tile - center of tile at grid position
-	mesh_instance.position = Vector3(tile_position.x * TILE_SIZE, 0.25, tile_position.y * TILE_SIZE)
-	
-	# Set material color based on tile type
-	var material = StandardMaterial3D.new()
-	match tile_type:
-		0: material.albedo_color = Color(0, 1, 0)      # Grass - bright green
-		1: material.albedo_color = Color.WHITE          # Stone - using white
-		2: material.albedo_color = Color.CYAN           # Water - using cyan
-		_: material.albedo_color = Color.MAGENTA       # Default - using magenta
-	
-	material.albedo_color = TILE_TYPES[tile_type].color
-	mesh_instance.material_override = material
-	
-	# Create outline wireframe - check if this is the hovered tile
-	var outline_color = Color.GOLD if tile_position == hovered else Color.BLACK
-	var outline_mesh = create_wireframe_mesh(Vector3(1.0, 0.5, 1.0))
-	var outline_instance = MeshInstance3D.new()
-	outline_instance.mesh = outline_mesh
-	outline_instance.position = mesh_instance.position
-	
-	# Create outline material
-	var outline_material = StandardMaterial3D.new()
-	outline_material.albedo_color = outline_color
-	outline_material.flags_unshaded = true
-	outline_material.flags_transparent = true
-	outline_material.albedo_color.a = 0.8
-	outline_instance.material_override = outline_material
-	
-	# Store reference to outline for later updates
-	tile_outlines[tile_position] = outline_instance
-	
-	# Add collision detection for clicking
-	var static_body = StaticBody3D.new()
-	var collision_shape = CollisionShape3D.new()
-	var shape = BoxShape3D.new()
-	shape.size = Vector3(1.0, 0.5, 1.0)  # Same size as mesh
-	collision_shape.shape = shape
-	static_body.add_child(collision_shape)
-	
-	# Connect input event to the static body
-	static_body.input_event.connect(_on_tile_clicked.bind(tile_position))
-	
-	# Add the static body to the mesh instance
-	mesh_instance.add_child(static_body)
-	
-	# Add to scene tree
-	add_child(mesh_instance)
-	add_child(outline_instance)
-	
-	# Debug output
-	print("Created tile at position: ", tile_position, " with type: ", tile_type, " at world position: ", mesh_instance.position)
+	if target_tile != Vector2i(-1, -1):
+		# Set the player's target position to the walkable tile
+		if player:
+			player.target_position = Vector2(target_tile.x, target_tile.y)
+			print("Player target set to walkable tile: ", player.target_position)
+		else:
+			print("Player not found!")
+	else:
+		print("No walkable tile found near: ", tile_position)
 
 func create_wireframe_mesh(size: Vector3) -> Mesh:
 	var surface_tool = SurfaceTool.new()
@@ -284,29 +212,11 @@ func create_wireframe_mesh(size: Vector3) -> Mesh:
 	surface_tool.index()
 	return surface_tool.commit()
 
-func _on_tile_clicked(camera: Camera3D, event: InputEvent, position: Vector3, normal: Vector3, shape_idx: int, tile_position: Vector2i):
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		print("Clicked on tile at position: ", tile_position)
-		
-		# Get player's current tile position
-		var player_tile_pos = Vector2i(floor(player.character_body.global_position.x), floor(player.character_body.global_position.z))
-		
-		# Find the closest walkable tile
-		var target_tile = find_closest_walkable_tile(tile_position, player_tile_pos)
-		
-		if target_tile != Vector2i(-1, -1):
-			# Set the player's target position to the walkable tile
-			if player:
-				player.target_position = Vector2(target_tile.x, target_tile.y)
-				print("Player target set to walkable tile: ", player.target_position)
-			else:
-				print("Player not found!")
-		else:
-			print("No walkable tile found near: ", tile_position)
+
 
 func find_closest_walkable_tile(clicked_tile: Vector2i, player_tile: Vector2i) -> Vector2i:
 	# If the clicked tile is walkable, use it
-	if is_tile_walkable(clicked_tile):
+	if chunk_manager and chunk_manager.is_tile_walkable(clicked_tile):
 		return clicked_tile
 	
 	# If we clicked on the player's current tile, we're already as close as possible
@@ -336,12 +246,12 @@ func find_closest_walkable_tile(clicked_tile: Vector2i, player_tile: Vector2i) -
 				if abs(dx) == current_distance or abs(dy) == current_distance:
 					var check_tile = Vector2i(clicked_tile.x + dx, clicked_tile.y + dy)
 					
-					# Check bounds
-					if check_tile.x < 0 or check_tile.x >= WORLD_SIZE or check_tile.y < 0 or check_tile.y >= WORLD_SIZE:
+					# Check if tile is in a loaded chunk
+					if not chunk_manager or not chunk_manager.get_chunk_at_position(check_tile):
 						continue
 					
 					# If this tile is walkable
-					if is_tile_walkable(check_tile):
+					if chunk_manager.is_tile_walkable(check_tile):
 						# Calculate distance to player
 						var tile_distance_to_player = check_tile.distance_to(player_tile)
 						
@@ -366,56 +276,20 @@ func find_closest_walkable_tile(clicked_tile: Vector2i, player_tile: Vector2i) -
 	return Vector2i(-1, -1)
 
 func is_tile_walkable(tile_pos: Vector2i) -> bool:
-	# Check bounds
-	if tile_pos.x < 0 or tile_pos.x >= WORLD_SIZE or tile_pos.y < 0 or tile_pos.y >= WORLD_SIZE:
-		return false
-	
-	# Get the tile type
-	var tile_type = world_tiles[tile_pos.x][tile_pos.y].type
-	
-	# Define which tile types are walkable
-	return TILE_TYPES[tile_type].walkable
+	# Use chunk manager to check if tile is walkable
+	if chunk_manager:
+		return chunk_manager.is_tile_walkable(tile_pos)
+	return false
 
 func create_game_objects():
-	# Create a tree
-	# var tree = GameObject.create_tree(self)
-	
-	# Create additional objects for testing
-	create_test_objects()
+	# This function is now handled by the chunk system
+	# Objects are generated automatically within chunks
+	pass
 
 func create_test_objects():
-	# Create a few more objects to test hover functionality
-	var test_objects = [
-		{"name": "Gray Tree", "tile": Vector2i(5, 5), "mesh": preload("res://assets/GreyTree.obj")},
-		{"name": "Palm Tree", "tile": Vector2i(7, 3), "mesh": preload("res://assets/PalmTree.obj")},
-		{"name": "Trunk", "tile": Vector2i(2, 7), "mesh": preload("res://assets/Trunk_02.obj")}
-	]
-	
-	for obj_data in test_objects:
-		var obj = GameObject.new(
-			obj_data.name,
-			{
-				"Interact": func(): print("Interacting with ", obj_data.name),
-				"Examine": func(): print("Examining ", obj_data.name)
-			},
-			obj_data.tile
-		)
-		
-		obj.mesh = obj_data.mesh
-		var material = StandardMaterial3D.new()
-		
-		var shader_material = ShaderMaterial.new()
-		shader_material.shader = outline_shader
-		shader_material.set_shader_parameter("Outline Color", Color.BLACK)
-		shader_material.set_shader_parameter("Outline Width", 5.0)
-		
-		material.next_pass = shader_material
-		obj.set_surface_override_material(0,material)
-		var tile_position = Vector3(obj.tile.x * 1.0, 0.5, obj.tile.y * 1.0)
-		obj.position = tile_position
-		
-		add_child(obj)
-		print("Created ", obj_data.name, " at tile: ", obj.tile, " world position: ", tile_position)
+	# This function is now handled by the chunk system
+	# Objects are generated automatically within chunks
+	pass
 
 #func setup_camera():
 	## Create camera

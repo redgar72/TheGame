@@ -27,7 +27,7 @@ func _ready():
 	# Setup collision detection
 	setup_collision()
 	
-	# Setup 2D outline
+	# Setup 2D outline (deferred to avoid parent node busy error)
 	setup_2d_outline()
 	
 	# Setup hover timer
@@ -68,6 +68,10 @@ func setup_2d_outline():
 	# Connect the draw function
 	outline_2d.draw.connect(_draw_outline)
 	
+	# Use deferred call to avoid parent node busy error
+	call_deferred("_setup_2d_outline_deferred")
+
+func _setup_2d_outline_deferred():
 	# Add to the UI layer (assuming there's a CanvasLayer or Control node for UI)
 	var ui_layer = get_tree().get_root().get_node_or_null("UI")
 	if not ui_layer:
@@ -83,8 +87,8 @@ func _process(delta):
 	if not world_camera:
 		world_camera = get_viewport().get_camera_3d()
 	
-	# Only update outline if it's visible
-	if outline_2d and world_camera and outline_2d.visible:
+	# Only update outline if it's visible and properly set up
+	if outline_2d and is_instance_valid(outline_2d) and world_camera and outline_2d.visible:
 		update_2d_outline()
 
 func update_2d_outline():
@@ -200,14 +204,14 @@ func _check_hover_exit():
 				var distance = mouse_pos.distance_to(Vector2(object_screen_pos.x, object_screen_pos.y))
 				if distance > 100:  # Threshold for mouse exit
 					is_hovered = false
-					if outline_2d:
+					if outline_2d and is_instance_valid(outline_2d):
 						outline_2d.visible = false
 						outline_2d.queue_redraw()
 					print("Mouse exited: ", name)
 			else:
 				# Object is behind camera, hide outline
 				is_hovered = false
-				if outline_2d:
+				if outline_2d and is_instance_valid(outline_2d):
 					outline_2d.visible = false
 					outline_2d.queue_redraw()
 				print("Object behind camera: ", name)
@@ -216,7 +220,7 @@ func _check_hover_exit():
 			var distance = mouse_pos.distance_to(object_screen_pos)
 			if distance > 100:  # Threshold for mouse exit
 				is_hovered = false
-				if outline_2d:
+				if outline_2d and is_instance_valid(outline_2d):
 					outline_2d.visible = false
 					outline_2d.queue_redraw()
 				print("Mouse exited: ", name)
@@ -225,7 +229,7 @@ func _on_input_event(camera: Camera3D, event: InputEvent, position: Vector3, nor
 	if event is InputEventMouseMotion:
 		if not is_hovered:
 			is_hovered = true
-			if outline_2d:
+			if outline_2d and is_instance_valid(outline_2d):
 				outline_2d.visible = true
 				outline_2d.queue_redraw()
 			print("Hovered over: ", name)

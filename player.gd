@@ -1,13 +1,19 @@
 extends Node
 class_name Player
 
+signal position_changed(new_position: Vector2)
+signal chunk_changed(new_chunk: Vector2i)
+
 var world_position = Vector2(5, 5)  # Center tile position
 var target_position = Vector2(5, 5)
 var character_body: CharacterBody3D
 var move_speed = 3.0  # Units per second
+var current_chunk = Vector2i(0, 0)  # Track current chunk position
 
 func _ready():
 	create_character()
+	# Initialize current chunk
+	current_chunk = get_chunk_position_from_world(Vector2i(world_position))
 
 func _process(delta):
 	# Move towards target position
@@ -59,8 +65,20 @@ func move_towards_target(delta):
 		character_body.global_position += direction * move_speed * delta
 		
 		# Update world_position to match current position
-		world_position = Vector2(character_body.global_position.x, character_body.global_position.z)
+		var new_world_position = Vector2(character_body.global_position.x, character_body.global_position.z)
+		world_position = new_world_position
+		
+		# Check if we've moved to a new chunk
+		var new_chunk = get_chunk_position_from_world(Vector2i(world_position))
+		if new_chunk != current_chunk:
+			current_chunk = new_chunk
+			chunk_changed.emit(current_chunk)
 		
 		# Optional: Make the character face the direction it's moving
 		if direction.length() > 0.1:
 			character_body.look_at(target_world_pos, Vector3.UP)
+
+func get_chunk_position_from_world(world_pos: Vector2i) -> Vector2i:
+	"""Convert world position to chunk position"""
+	const CHUNK_SIZE = 16
+	return Vector2i(floor(world_pos.x / float(CHUNK_SIZE)), floor(world_pos.y / float(CHUNK_SIZE)))
